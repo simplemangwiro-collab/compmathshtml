@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GF(16) Inverse Calculator (mod x^4 + x + 1)</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 780px; margin: 28px auto; padding: 0 14px; }
+    h1 { font-size: 22px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 14px; background: #fafafa; margin: 12px 0; }
+    input, button, select { font-size: 16px; padding: 8px; }
+    code { background:#f1f1f1; padding:2px 6px; border-radius:6px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .small { color:#444; font-size: 14px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border:1px solid #ddd; padding:6px; text-align:center; }
+  </style>
+</head>
+<body>
+
+<h1>Finite Field GF(16) Inverse Calculator</h1>
+
+<div class="card">
+  <p>
+    Field: <code>GF(16) = F2[x] / (m(x))</code> with modulus
+    <code>m(x) = x^4 + x + 1</code>.
+  </p>
+  <p class="small">
+    Elements are represented as 4-bit numbers 0..15 (polynomials of degree ≤ 3). Example:
+    <code>1011₂</code> means <code>x^3 + x + 1</code>.
+  </p>
+</div>
+
+<div class="card">
+  <div class="row">
+    <label for="a"><b>Enter a (1..15):</b></label>
+    <input id="a" type="number" min="1" max="15" value="1" />
+    <button onclick="compute()">Compute inverse</button>
+    <button onclick="showTable()">Show inverse table</button>
+  </div>
+
+  <div id="out" style="margin-top:12px;"></div>
+</div>
+
+<script>
+// ----- GF(16) using modulus m(x) = x^4 + x + 1 -----
+// Polynomial bits: a is a 4-bit integer representing a0 + a1*x + a2*x^2 + a3*x^3
+// Modulus bits: x^4 + x + 1  => 1 0 0 1 1 (binary) => 0b10011
+const MOD = 0b10011;
+
+// Addition in F2 is XOR (since 1+1=0)
+function gfAdd(a, b) {
+  return a ^ b;
+}
+
+// Multiply polynomials then reduce modulo MOD
+function gfMul(a, b) {
+  let res = 0;
+  let x = a;
+  let y = b;
+
+  while (y !== 0) {
+    if (y & 1) res ^= x;     // add (XOR) if lowest bit of y is 1
+    y >>= 1;
+    x <<= 1;
+
+    // if x has degree 4 term (bit 4 set), reduce using modulus
+    if (x & 0b10000) {
+      x ^= MOD;              // because x^4 ≡ x + 1 (from x^4 + x + 1 = 0)
+    }
+  }
+  return res & 0b1111;       // keep only 4 bits (degree ≤ 3)
+}
+
+function gfPow(a, e) {
+  let result = 1;
+  let base = a;
+  let exp = e;
+
+  while (exp > 0) {
+    if (exp & 1) result = gfMul(result, base);
+    base = gfMul(base, base);
+    exp >>= 1;
+  }
+  return result;
+}
+
+// In GF(16), every nonzero a satisfies a^15 = 1, so a^{-1} = a^{14}
+function gfInv(a) {
+  if (a === 0) return null;
+  return gfPow(a, 14);
+}
+
+function bits4(n) {
+  return n.toString(2).padStart(4, "0");
+}
+
+function polyString(n) {
+  // Convert 4-bit number to polynomial string
+  const terms = [];
+  if (n & 0b0001) terms.push("1");
+  if (n & 0b0010) terms.push("x");
+  if (n & 0b0100) terms.push("x²");
+  if (n & 0b1000) terms.push("x³");
+  return terms.length ? terms.reverse().join(" + ") : "0";
+}
+
+function compute() {
+  const a = parseInt(document.getElementById("a").value, 10);
+  const out = document.getElementById("out");
+
+  if (!Number.isInteger(a) || a < 1 || a > 15) {
+    out.innerHTML = `<p style="color:#b00;"><b>Error:</b> Enter an integer from 1 to 15.</p>`;
+    return;
+  }
+
+  const inv = gfInv(a);
+  const check = gfMul(a, inv);
+
+  out.innerHTML = `
+    <p><b>a</b> = ${a} (<code>${bits4(a)}₂</code>) = ${polyString(a)}</p>
+    <p><b>a⁻¹</b> = ${inv} (<code>${bits4(inv)}₂</code>) = ${polyString(inv)}</p>
+    <p><b>Check:</b> a · a⁻¹ = ${check} (<code>${bits4(check)}₂</code>)</p>
+    <p class="small">Inverse computed using <code>a⁻¹ = a¹⁴</code> because in GF(16), <code>a¹⁵ = 1</code> for all nonzero a.</p>
+  `;
+}
+
+function showTable() {
+  const out = document.getElementById("out");
+  let html = `<h3>Inverse Table (a → a⁻¹)</h3><table><tr><th>a</th><th>a (poly)</th><th>a⁻¹</th><th>a⁻¹ (poly)</th><th>check</th></tr>`;
+  for (let a = 1; a <= 15; a++) {
+    const inv = gfInv(a);
+    const check = gfMul(a, inv);
+    html += `<tr>
+      <td>${a} <br><code>${bits4(a)}₂</code></td>
+      <td>${polyString(a)}</td>
+      <td>${inv} <br><code>${bits4(inv)}₂</code></td>
+      <td>${polyString(inv)}</td>
+      <td>${check}</td>
+    </tr>`;
+  }
+  html += `</table>`;
+  out.innerHTML = html;
+}
+
+// run once
+compute();
+</script>
+
+</body>
+</html>
